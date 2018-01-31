@@ -8,7 +8,7 @@ import pytest
 import re
 import random
 
-import engines
+import drweb_engines.engines as engines
 
 SAMPLE_INPUT = "Sample Text"
 PROPER_RESULT = "result-PHQGHUMEAYLN"
@@ -22,12 +22,14 @@ def create_test_file(tmpdir):
         return str(test_file)
     return create_test_file
 
-@pytest.mark.parametrize("engine", engines.ENGINES)
-def test_launch_engine(engine, create_test_file):
+@pytest.mark.parametrize("engine_name", engines.engine_names)
+def test_launch_engine(engine_name, create_test_file):
     """ Тестируем функцию запуска движка для движка A. """
 
     test_file = create_test_file(SAMPLE_INPUT)
-    output = engines.launch_engine(
-        engine, test_file, engines_dir="engines-bin")
+    engine = engines.engines_by_name[engine_name]
+    engine.engines_dir = "engines-bin"
+    output = engine.launch(
+        [test_file])
     result = output[test_file]
     assert result == PROPER_RESULT

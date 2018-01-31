@@ -11,9 +11,10 @@ from celery.signals import worker_init, worker_shutting_down
 
 try:
     import engines
+    import file_storage
 except ImportError:
     import drweb_engines.engines as engines
-
+    import drweb_engines.file_storage as file_storage
 
 # Константы настроек
 
@@ -25,10 +26,6 @@ queue = celery.Celery()
 queue.conf.broker_url = REDIS_DB
 queue.conf.result_backend = REDIS_DB
 
-# Хелпер
-
-def concat(ll):
-    return reduce(operator.add, ll)
 
 # Задачи
 
@@ -36,10 +33,15 @@ EngineResponse = collections.namedtuple(
     "EngineResponse", "engine,file,response")
 
 @queue.task(bind=True, typed=True)
-def process_file_with_engine(self, uploaded_path, engine):
-    self.engine = engine
-    result, *_ = engines.launch_engine(engine, [uploaded_path]).items()
-    return EngineResponse(engine, result[0], result[1])
+def process_file_with_engine(self, uploaded_path, engine_name):
+    self.engine_name = engine_name
+    with file_storage.LocalFileStorage() as storage:
+        local_path = storage.get_file_path(uploaded_path)
+        engine = engines.engines_by_name[engine_name]
+        results_dict = engine.launch([local_path])
+        assert len(results_dict) == 1
+        result, *_ = results_dict.items()
+        return EngineResponse(engine_name, result[0], result[1])
   
 def process_files(uploaded_paths, engines):
     """ Запускаем паралельно задачи по обработке файла разными движками.
@@ -52,5 +54,5 @@ def process_files(uploaded_paths, engines):
         for engine in engines 
         for path in uploaded_paths))
     result = batch_job.apply_async().join()
-    #%HACK
+    #%HACK: Celery забывает, что тип результатов - EngineResponse
     return list(itertools.starmap(EngineResponse, result))
